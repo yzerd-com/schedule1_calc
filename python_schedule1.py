@@ -2,9 +2,42 @@ import math
 import json
 import os
 from collections import deque
-from flask import Flask, request, jsonify, render_template_string
-from tabulate import tabulate
-
+import json
+from jinja2 import Template
+BASE_PRODUCT_NAMES = [
+    "OG Kush", "Sour Diesel", "Green Crack", "Grandaddy purple", "Meth", "Cocaine"
+]
+product_unlock_levels = [
+    "Street Rat I",   # 0 - Cuke
+    "Hoodlum IV",     # 1 - Flu Medicine
+    "Hoodlum V",      # 2 - Gasoline
+    "Street Rat I",   # 3 - Donut
+    "Peddler I",      # 4 - Energy Drink
+    "Hoodlum III",    # 5 - Mouth Wash
+    "Peddler II",     # 6 - Motor Oil
+    "Street Rat I",   # 7 - Banana
+    "Peddler IV",     # 8 - Chili
+    "Hustler I",      # 9 - Iodine
+    "Street Rat I",   # 10 - Paracetamol
+    "Hoodlum II",     # 11 - Viagra
+    "Hustler III",    # 12 - Horse Semen
+    "Peddler III",    # 13 - Mega Bean
+    "Hustler II",     # 14 - Addy
+    "Peddler V",      # 15 - Battery
+]
+AVAILABLE_LEVELS = [
+    "Street Rat I", "Street Rat II", "Street Rat III", "Street Rat IV", "Street Rat V",
+    "Hoodlum I", "Hoodlum II", "Hoodlum III", "Hoodlum IV", "Hoodlum V",
+    "Peddler I", "Peddler II", "Peddler III", "Peddler IV", "Peddler V",
+    "Hustler I", "Hustler II", "Hustler III", "Hustler IV", "Hustler V",
+    "Bagman I", "Bagman II", "Bagman III", "Bagman IV", "Bagman V",
+    "Enforcer I", "Enforcer II", "Enforcer III", "Enforcer IV", "Enforcer V",
+    "Shot Caller I", "Shot Caller II", "Shot Caller III", "Shot Caller IV", "Shot Caller V",
+    "Block Boss I", "Block Boss II", "Block Boss III", "Block Boss IV", "Block Boss V",
+    "Underlord I", "Underlord II", "Underlord III", "Underlord IV", "Underlord V",
+    "Baron I", "Baron II", "Baron III", "Baron IV", "Baron V",
+    "Kingpin I++"
+]
 # --- Multipliers and Bitmask Mappings ---
 multipliers = {
     "Disorienting": 0.00, "Laxative": 0.00, "Paranoia": 0.00, "Schizophrenia": 0.00,
@@ -32,9 +65,6 @@ def compute_multiplier(mask):
         mask -= b
     return total
 
-bad_effect_mask = sum(effect_to_bit[e] for e, m in multipliers.items() if m == 0)
-
-# --- Rule & Product Classes ---
 class Rule:
     def __init__(self, conditions, not_conditions, action, target, new_effect):
         self.cond_mask = sum(effect_to_bit[c] for c in conditions)
@@ -73,20 +103,6 @@ class Product:
                 result = candidate
         return result
 
-def apply_rule(effects, rule, debug=False):
-    if (effects & rule.cond_mask) != rule.cond_mask or (effects & rule.not_cond_mask):
-        return effects
-    if rule.action == "replace":
-        return (effects & ~rule.target_bit) | rule.new_effect_bit
-    if rule.action == "add":
-        return effects | rule.new_effect_bit
-    return effects
-
-def apply_rules(effects, rules, debug=False):
-    for rule in rules:
-        effects = apply_rule(effects, rule, debug)
-    return effects
-
 memo_process_product = {}
 def process_product_cached(effects, product, debug=False):
     key = (effects, id(product))
@@ -119,8 +135,6 @@ def make_rules(rules_tuples):
             })
     return result
 
-# --- Define Rules and Products ---
-# (Insert your rules definitions as below)
 cuke_rules = make_rules([
     ("Munchies", "Athletic", "Munchies", "Athletic"),
     ("Slippery", "Munchies", "Slippery", "Munchies"),
@@ -372,9 +386,6 @@ def get_optimal_combo_for_bitmap(primary_product, product_bitmap, max_length=9, 
     allowed_products = [p for i, p in enumerate(products) if (product_bitmap >> i) & 1]
     return find_best_sequences_by_length_for_base_cost(primary_product, allowed_products, max_length, max_effects, debug)
 
-# --- Precomputation Functions ---
-PRECOMPUTED_FILE = "precomputed_results.json"
-
 def precompute_all():
     precomputed = {}
     # Determine the maximum required level index from product_unlock_levels.
@@ -409,39 +420,6 @@ def load_precomputed():
     else:
         return precompute_all()
 
-# --- Levels and Globals for Frontend ---
-AVAILABLE_LEVELS = [
-    "Street Rat I", "Street Rat II", "Street Rat III", "Street Rat IV", "Street Rat V",
-    "Hoodlum I", "Hoodlum II", "Hoodlum III", "Hoodlum IV", "Hoodlum V",
-    "Peddler I", "Peddler II", "Peddler III", "Peddler IV", "Peddler V",
-    "Hustler I", "Hustler II", "Hustler III", "Hustler IV", "Hustler V",
-    "Bagman I", "Bagman II", "Bagman III", "Bagman IV", "Bagman V",
-    "Enforcer I", "Enforcer II", "Enforcer III", "Enforcer IV", "Enforcer V",
-    "Shot Caller I", "Shot Caller II", "Shot Caller III", "Shot Caller IV", "Shot Caller V",
-    "Block Boss I", "Block Boss II", "Block Boss III", "Block Boss IV", "Block Boss V",
-    "Underlord I", "Underlord II", "Underlord III", "Underlord IV", "Underlord V",
-    "Baron I", "Baron II", "Baron III", "Baron IV", "Baron V",
-    "Kingpin I++"
-]
-BASE_PRODUCT_NAMES = [bp.name for bp in base_products]
-product_unlock_levels = [
-    "Street Rat I",   # 0 - Cuke
-    "Hoodlum IV",     # 1 - Flu Medicine
-    "Hoodlum V",      # 2 - Gasoline
-    "Street Rat I",   # 3 - Donut
-    "Peddler I",      # 4 - Energy Drink
-    "Hoodlum III",    # 5 - Mouth Wash
-    "Peddler II",     # 6 - Motor Oil
-    "Street Rat I",   # 7 - Banana
-    "Peddler IV",     # 8 - Chili
-    "Hustler I",      # 9 - Iodine
-    "Street Rat I",   # 10 - Paracetamol
-    "Hoodlum II",     # 11 - Viagra
-    "Hustler III",    # 12 - Horse Semen
-    "Peddler III",    # 13 - Mega Bean
-    "Hustler II",     # 14 - Addy
-    "Peddler V",      # 15 - Battery
-]
 def get_product_bitmap(player_level: str) -> int:
     level_index = AVAILABLE_LEVELS.index(player_level)
     bitmap = 0
@@ -450,157 +428,159 @@ def get_product_bitmap(player_level: str) -> int:
             bitmap |= (1 << i)
     return bitmap
 
-# --- Precomputed Data ---
-precomputed_data = load_precomputed()
+def filter_duplicates(precomputed):
+    """
+    For each base product and level, filter out duplicate combos from the "by_length"
+    dictionary. Two combos are considered duplicate if their sequence lists are identical.
+    """
+    filtered = {}
+    for base, levels in precomputed.items():
+        filtered[base] = {}
+        for level, result in levels.items():
+            seen = set()
+            unique_by_length = {}
+            # Loop through each sequence length.
+            for length, combo in result["by_length"].items():
+                # Convert the sequence list to a tuple so it can be used in a set.
+                seq_tuple = tuple(combo["sequence"])
+                if seq_tuple not in seen:
+                    seen.add(seq_tuple)
+                    unique_by_length[length] = combo
+            new_result = dict(result)
+            new_result["by_length"] = unique_by_length
+            filtered[base][level] = new_result
+    return filtered
 
-# --- Flask App and Frontend ---
-app = Flask(__name__)
-
-TEMPLATE = """
+html_template = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Optimal Combo Optimizer</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 2em; }
-      table { border-collapse: collapse; width: 100%; margin-top: 1em; }
-      th, td { border: 1px solid #ccc; padding: 0.5em; text-align: center; }
-      th { background-color: #f0f0f0; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Optimal Combo Optimizer Results</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    select { font-size: 1em; padding: 0.25em; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 0.5em; text-align: center; }
+    th { background-color: #f0f0f0; }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
-    <h1>Optimal Combo Optimizer</h1>
-    <form method="POST">
-        <label for="base">Select Primary Product:</label>
-        <select name="base" id="base" required>
-            {% for bp in base_products %}
-                <option value="{{ bp }}" {% if bp==selected_base %}selected{% endif %}>{{ bp }}</option>
-            {% endfor %}
-        </select>
-        <br><br>
-        <label for="level">Select Your Level:</label>
-        <select name="level" id="level" required>
-            {% for lvl in levels %}
-                <option value="{{ lvl }}" {% if lvl==selected_level %}selected{% endif %}>{{ lvl }}</option>
-            {% endfor %}
-        </select>
-        <br><br>
-        <button type="submit">Optimize</button>
-    </form>
+  <h1>Optimal Combo Optimizer Results</h1>
+  
+  <label for="baseSelect">Select Primary Product:</label>
+  <select id="baseSelect"></select>
+  <br><br>
+  <label for="levelSelect">Select Your Level:</label>
+  <select id="levelSelect"></select>
+  <br><br>
+  <button id="viewButton">View Results</button>
 
-    {% if rows %}
-      <h2>Optimal Sequences for {{ selected_base }} at Level {{ selected_level }}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Len</th>
-            <th>Δ Net</th>
-            <th>Net</th>
-            <th>Value</th>
-            <th>Cost</th>
-            <th>Mult</th>
-            <th>#Effects</th>
-            <th>Sequence</th>
-            <th>Effects</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          <tr>
-            <td>{{ row.length }}</td>
-            <td>{{ row.delta }}</td>
-            <td>{{ row.net }}</td>
-            <td>{{ row.value }}</td>
-            <td>{{ row.cost }}</td>
-            <td>{{ row.multiplier }}</td>
-            <td>{{ row.num_effects }}</td>
-            <td>{{ row.sequence }}</td>
-            <td>{{ row.effects }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
+  <div id="resultsSection" class="hidden">
+    <h2>Results</h2>
+    <div id="resultsContent"></div>
+  </div>
+
+  <script>
+    const precomputedData = {{ precomputed|tojson }};
+    const availableLevels = {{ levels|tojson }};
+    const baseProductNames = {{ base_products|tojson }};
+    
+    const baseSelect = document.getElementById("baseSelect");
+    const levelSelect = document.getElementById("levelSelect");
+    const resultsSection = document.getElementById("resultsSection");
+    const resultsContent = document.getElementById("resultsContent");
+    
+    // Populate base product dropdown in order.
+    baseProductNames.forEach(base => {
+      const opt = document.createElement("option");
+      opt.value = base;
+      opt.innerText = base;
+      baseSelect.appendChild(opt);
+    });
+    
+    // Populate level dropdown in order.
+    function updateLevels() {
+      const selectedBase = baseSelect.value;
+      levelSelect.innerHTML = "";
+      availableLevels.forEach(level => {
+        if (precomputedData[selectedBase] && precomputedData[selectedBase][level]) {
+          const opt = document.createElement("option");
+          opt.value = level;
+          opt.innerText = level;
+          levelSelect.appendChild(opt);
+        }
+      });
+    }
+    
+    baseSelect.addEventListener("change", updateLevels);
+    updateLevels();
+    
+    document.getElementById("viewButton").addEventListener("click", function() {
+      const selectedBase = baseSelect.value;
+      const selectedLevel = levelSelect.value;
+      if (!precomputedData[selectedBase] || !precomputedData[selectedBase][selectedLevel]) {
+        resultsContent.innerHTML = "<p>No data available for this selection.</p>";
+        resultsSection.classList.remove("hidden");
+        return;
+      }
+      
+      const result = precomputedData[selectedBase][selectedLevel];
+      let html = "";
+      const lengths = Object.keys(result.by_length).map(x => parseInt(x)).sort((a, b) => a - b);
+      html += "<table>";
+      html += "<thead><tr><th>Len</th><th>Δ Net</th><th>Net Benefit</th><th>Expected Value</th><th>Cost</th><th>Multiplier</th><th># Effects</th><th>Sequence</th><th>Effects</th></tr></thead><tbody>";
+      let lastNet = null;
+      lengths.forEach(len => {
+        const combo = result.by_length[len.toString()];
+        const net = combo.net_benefit;
+        const delta = (lastNet !== null) ? (net - lastNet).toFixed(2) : "–";
+        lastNet = net;
+        html += `<tr>
+                  <td>${len}</td>
+                  <td>${delta}</td>
+                  <td>${combo.net_benefit}</td>
+                  <td>${combo.expected_total_value}</td>
+                  <td>${combo.cost}</td>
+                  <td>${combo.total_multiplier.toFixed(2)}</td>
+                  <td>${combo.effects.length}</td>
+                  <td>${combo.sequence.join(", ")}</td>
+                  <td>${combo.effects.join(", ")}</td>
+                </tr>`;
+      });
+      html += "</tbody></table>";
+      resultsContent.innerHTML = html;
+      resultsSection.classList.remove("hidden");
+    });
+  </script>
 </body>
 </html>
 """
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        level = request.form.get("level")
-        base_name = request.form.get("base")
-        if base_name not in precomputed_data:
-            return "Invalid base product", 400
-        if level not in precomputed_data[base_name]:
-            return "Invalid level", 400
-        result = precomputed_data[base_name][level]
-        rows = []
-        last_net = None
-        # Sort keys as integers
-        for length in sorted(result["by_length"], key=lambda x: int(x)):
-            combo = result["by_length"][length]
-            net = combo["net_benefit"]
-            delta = None if last_net is None else round(net - last_net, 2)
-            last_net = net
-            rows.append({
-                "length": length,
-                "delta": delta if delta is not None else "–",
-                "net": round(net, 2),
-                "value": combo["expected_total_value"],
-                "cost": combo["cost"],
-                "multiplier": round(combo["total_multiplier"], 2),
-                "num_effects": len(combo["effects"]),
-                "sequence": ", ".join(combo["sequence"]),
-                "effects": ", ".join(combo["effects"])
-            })
-        return render_template_string(TEMPLATE, levels=AVAILABLE_LEVELS, base_products=BASE_PRODUCT_NAMES,
-                                      selected_level=level, selected_base=base_name, rows=rows)
-    return render_template_string(TEMPLATE, levels=AVAILABLE_LEVELS, base_products=BASE_PRODUCT_NAMES,
-                                  selected_level=None, selected_base=None, rows=None)
+# Create a Jinja2 template instance.
+template = Template(html_template)
 
-@app.route("/optimize")
-def optimize_api():
-    level = request.args.get("level")
-    base_name = request.args.get("base")
-    if not base_name or base_name not in precomputed_data:
-        return jsonify({"error": "Invalid base product"}), 400
-    if level not in precomputed_data[base_name]:
-        return jsonify({"error": "Invalid level"}), 400
-    result = precomputed_data[base_name][level]
-    output = []
-    last_net = None
-    for length in sorted(result["by_length"], key=lambda x: int(x)):
-        combo = result["by_length"][length]
-        net = combo["net_benefit"]
-        delta = None if last_net is None else round(net - last_net, 2)
-        last_net = net
-        output.append({
-            "length": length,
-            "net": round(net, 2),
-            "delta": delta,
-            "value": combo["expected_total_value"],
-            "cost": combo["cost"],
-            "multiplier": round(combo["total_multiplier"], 2),
-            "num_effects": len(combo["effects"]),
-            "sequence": combo["sequence"],
-            "effects": combo["effects"]
-        })
-    return jsonify(output)
+def generate_static_html(precomputed):
+    rendered_html = template.render(precomputed=precomputed,
+                                    levels=AVAILABLE_LEVELS,
+                                    base_products=BASE_PRODUCT_NAMES)
+    with open(OUTPUT_HTML_FILE, "w", encoding="utf-8") as f:
+        f.write(rendered_html)
+    print(f"Static HTML file generated: {OUTPUT_HTML_FILE}")
 
-def load_precomputed():
+PRECOMPUTED_FILE = "precomputed_results.json"
+OUTPUT_HTML_FILE = "index.html"
+if __name__ == "__main__":
     if os.path.exists(PRECOMPUTED_FILE):
         with open(PRECOMPUTED_FILE, "r") as f:
-            return json.load(f)
+            precomputed = json.load(f)
     else:
-        return precompute_all()
-
-precomputed_data = load_precomputed()
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "precompute":
-        precompute_all()
-        print("Precomputation complete.")
-    else:
-        app.run(debug=True)
+        from time import time
+        print("Precomputed file not found; computing now...")
+        start = time()
+        precomputed = precompute_all()
+        print(f"Precomputation complete in {time() - start:.2f} seconds.")
+    
+    # Generate the static index.html file.
+    generate_static_html(precomputed)
