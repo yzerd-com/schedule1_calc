@@ -2,7 +2,6 @@ import math
 import json
 import os
 from collections import deque
-import json
 from jinja2 import Template
 BASE_PRODUCT_NAMES = [
     "OG Kush", "Sour Diesel", "Green Crack", "Grandaddy purple", "Meth", "Cocaine"
@@ -104,7 +103,7 @@ class Product:
         return result
 
 memo_process_product = {}
-def process_product_cached(effects, product, debug=False):
+def process_product_cached(effects, product):
     key = (effects, id(product))
     if key in memo_process_product:
         return memo_process_product[key]
@@ -283,7 +282,6 @@ addy_rules = make_rules([
     ("Explosive", None, "Explosive", "Euphoric"),
 ])
 
-# --- Define Base and Supplemental Products ---
 base_products = [
     Product("OG Kush", "Calming", [], price=35),
     Product("Sour Diesel", "Refreshing", [], price=35),
@@ -558,7 +556,6 @@ html_template = """
 </html>
 """
 
-# Create a Jinja2 template instance.
 template = Template(html_template)
 
 def generate_static_html(precomputed):
@@ -576,11 +573,5 @@ if __name__ == "__main__":
         with open(PRECOMPUTED_FILE, "r") as f:
             precomputed = json.load(f)
     else:
-        from time import time
-        print("Precomputed file not found; computing now...")
-        start = time()
         precomputed = precompute_all()
-        print(f"Precomputation complete in {time() - start:.2f} seconds.")
-    
-    # Generate the static index.html file.
     generate_static_html(precomputed)
