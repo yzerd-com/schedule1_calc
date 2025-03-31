@@ -39,7 +39,6 @@
     const resultsSection = document.getElementById("resultsSection");
     const resultsContent = document.getElementById("resultsContent");
     
-    // Populate base product dropdown in order.
     baseProductNames.forEach(base => {
       const opt = document.createElement("option");
       opt.value = base;
@@ -47,7 +46,6 @@
       baseSelect.appendChild(opt);
     });
     
-    // Populate level dropdown in order.
     function updateLevels() {
       const selectedBase = baseSelect.value;
       levelSelect.innerHTML = "";
